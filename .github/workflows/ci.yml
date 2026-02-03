@@ -20,7 +20,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
           
-      - name: Cache Cargo
+      - name: Cache dependencies
         uses: actions/cache@v4
         with:
           path: |
@@ -28,8 +28,9 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
+            ~/.avm/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-anchor-${{ env.ANCHOR_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
           
       - name: Install Solana
         run: |
@@ -37,7 +38,18 @@ jobs:
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
           
       - name: Install Anchor CLI
-        run: cargo install --git https://github.com/coral-xyz/anchor --tag v${{ env.ANCHOR_VERSION }} anchor-cli --locked
+        run: |
+          # Install AVM
+          cargo install --git https://github.com/coral-xyz/anchor avm --locked --force
+          # Install specific Anchor version
+          avm install ${{ env.ANCHOR_VERSION }}
+          avm use ${{ env.ANCHOR_VERSION }}
+          echo "$HOME/.avm/bin" >> $GITHUB_PATH
+          
+      - name: Verify installations
+        run: |
+          solana --version
+          anchor --version
           
       - name: Build
         run: anchor build
