@@ -16,7 +16,7 @@
 use anchor_lang::prelude::*;
 use anchor_lang::system_program;
 
-declare_id!("SecureVau1t111111111111111111111111111111111");
+declare_id!("EnxAiRiDFgVzy3ygKbeYksbnqjvSXSCA6Bw1TE2Ldm1q");
 
 #[program]
 pub mod secure_vault {
@@ -49,10 +49,14 @@ pub mod secure_vault {
     /// Create a new vault for an agent
     /// The vault PDA is derived from the owner, ensuring one vault per owner
     pub fn create_vault(ctx: Context<CreateVault>) -> Result<()> {
+        let owner_key = ctx.accounts.owner.key();
+        let vault_key = ctx.accounts.vault.key();
+        
         let vault = &mut ctx.accounts.vault;
         let config = &mut ctx.accounts.config;
         
-        vault.owner = ctx.accounts.owner.key();
+        vault.owner = owner_key;
+        vault.pending_owner = None;
         vault.balance = 0; // IMPORTANT: Start at 0, only increment on actual deposits
         vault.total_deposited = 0;
         vault.total_withdrawn = 0;
@@ -62,8 +66,8 @@ pub mod secure_vault {
         config.total_vaults = config.total_vaults.saturating_add(1);
         
         emit!(VaultCreated {
-            owner: vault.owner,
-            vault: ctx.accounts.vault.key(),
+            owner: owner_key,
+            vault: vault_key,
         });
         
         Ok(())
@@ -75,6 +79,9 @@ pub mod secure_vault {
     /// We use CPI to transfer SOL, then update the tracked balance
     pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         require!(amount > 0, VaultError::ZeroAmount);
+        
+        // Get key before mutable borrow
+        let vault_key = ctx.accounts.vault.key();
         
         // 1. Actually transfer SOL first
         let cpi_context = CpiContext::new(
@@ -95,10 +102,12 @@ pub mod secure_vault {
             .checked_add(amount)
             .ok_or(VaultError::Overflow)?;
         
+        let new_balance = vault.balance;
+        
         emit!(Deposited {
-            vault: ctx.accounts.vault.key(),
+            vault: vault_key,
             amount,
-            new_balance: vault.balance,
+            new_balance,
         });
         
         Ok(())
@@ -110,15 +119,18 @@ pub mod secure_vault {
     pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
         require!(amount > 0, VaultError::ZeroAmount);
         
+        // Get key and config values before mutable borrow
+        let vault_key = ctx.accounts.vault.key();
+        let fee_bps = ctx.accounts.config.fee_bps;
+        
         let vault = &mut ctx.accounts.vault;
-        let config = &ctx.accounts.config;
         
         // Check sufficient balance
         require!(vault.balance >= amount, VaultError::InsufficientBalance);
         
         // Calculate fee
         let fee = amount
-            .checked_mul(config.fee_bps as u64)
+            .checked_mul(fee_bps as u64)
             .ok_or(VaultError::Overflow)?
             .checked_div(10000)
             .ok_or(VaultError::Overflow)?;
@@ -151,11 +163,13 @@ pub mod secure_vault {
             .checked_add(amount)
             .ok_or(VaultError::Overflow)?;
         
+        let new_balance = vault.balance;
+        
         emit!(Withdrawn {
-            vault: ctx.accounts.vault.key(),
+            vault: vault_key,
             amount,
             fee,
-            new_balance: vault.balance,
+            new_balance,
         });
         
         Ok(())
@@ -165,12 +179,14 @@ pub mod secure_vault {
     /// 
     /// PATTERN: Two-step ownership transfer for safety
     pub fn propose_transfer(ctx: Context<ProposeTransfer>, new_owner: Pubkey) -> Result<()> {
+        let vault_key = ctx.accounts.vault.key();
         let vault = &mut ctx.accounts.vault;
+        let current_owner = vault.owner;
         vault.pending_owner = Some(new_owner);
         
         emit!(TransferProposed {
-            vault: ctx.accounts.vault.key(),
-            current_owner: vault.owner,
+            vault: vault_key,
+            current_owner,
             proposed_owner: new_owner,
         });
         
@@ -179,16 +195,18 @@ pub mod secure_vault {
 
     /// Accept vault ownership transfer
     pub fn accept_transfer(ctx: Context<AcceptTransfer>) -> Result<()> {
+        let vault_key = ctx.accounts.vault.key();
+        let new_owner_key = ctx.accounts.new_owner.key();
         let vault = &mut ctx.accounts.vault;
         let old_owner = vault.owner;
         
-        vault.owner = ctx.accounts.new_owner.key();
+        vault.owner = new_owner_key;
         vault.pending_owner = None;
         
         emit!(TransferAccepted {
-            vault: ctx.accounts.vault.key(),
+            vault: vault_key,
             old_owner,
-            new_owner: vault.owner,
+            new_owner: new_owner_key,
         });
         
         Ok(())
