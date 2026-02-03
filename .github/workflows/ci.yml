@@ -17,8 +17,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust 1.75
+        uses: dtolnay/rust-toolchain@1.75.0
       
       - name: Cache dependencies
         uses: actions/cache@v4
@@ -28,7 +28,7 @@ jobs:
             ~/.cargo/registry/
             ~/.local/share/solana/
             target/
-          key: ${{ runner.os }}-solana-${{ env.SOLANA_VERSION }}-anchor-${{ env.ANCHOR_VERSION }}
+          key: ${{ runner.os }}-rust175-solana-${{ env.SOLANA_VERSION }}-anchor-${{ env.ANCHOR_VERSION }}
           
       - name: Install Solana
         run: |
@@ -41,6 +41,7 @@ jobs:
           
       - name: Verify installations
         run: |
+          rustc --version
           solana --version
           anchor --version
           
