@@ -8,7 +8,7 @@ on:
 
 env:
   SOLANA_VERSION: "stable"
-  ANCHOR_VERSION: "0.31.2"
+  ANCHOR_VERSION: "0.32.1"
 
 jobs:
   build:
@@ -27,7 +27,6 @@ jobs:
             ~/.cargo/bin/
             ~/.cargo/registry/
             ~/.local/share/solana/
-            ~/.cache/solana/
             target/
           key: ${{ runner.os }}-solana-${{ env.SOLANA_VERSION }}-anchor-${{ env.ANCHOR_VERSION }}
           
